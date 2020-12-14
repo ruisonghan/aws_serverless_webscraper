@@ -17,6 +17,7 @@ const getUploadURL = async function() {
     Bucket: process.env.UploadBucket,
     Key:  `${actionId}.txt`,
     ContentType: 'text/plain',
+    Expires: 300,
     ACL: 'public-read'      // Enable this setting to make the object publicly readable - only works if the bucket can support public objects
   }
 
