@@ -1,7 +1,7 @@
 # Name of the lambda function: lambda_saveProductInfo
 # Running environment: python 3.8
-# This function is triggered by a txt file being uploaded in an Amazon S3 bucket.
-# The file is downloaded and each line is inserted into DynamoDB tables.
+# This function is triggered by a .txt file being uploaded in an Amazon S3 bucket. The file will be downloaded by the fucntion and each line is inserted into DynamoDB tables.
+# Besides, it will use the bs4 and requests to get the initial price of products and save them to DynamoDB tables.
 
 from __future__ import print_function
 import json, urllib.parse, boto3, csv, datetime, requests, base64
@@ -15,7 +15,7 @@ dynamodb = boto3.resource('dynamodb')
 ProductTable     = dynamodb.Table('Product');
 ProductPriceTable     = dynamodb.Table('ProductPrice');
 
-
+# Check the price of a product using its web link. bs4 and request libraries are used here to get the price info from the web page.
 def return_NameandPrice(linkstring):
     header={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_0_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36 Edg/87.0.664.47'}
     page = requests.get(linkstring,headers=header)
@@ -32,13 +32,13 @@ def return_NameandPrice(linkstring):
 
 # This handler is executed every time the Lambda function is triggered
 def lambda_handler(event, context):
-
   # Show the incoming event in the debug log
   print("Event received by Lambda function: " + json.dumps(event, indent=2))
 
   # Get the bucket and object key from the Event
   bucket = event['Records'][0]['s3']['bucket']['name']
   key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
+  # save the txt file as a local file which can read by other packages further.
   localFilename = '/tmp/pricehistory.txt'
 
   # Download the file from S3 to the local filesystem
@@ -57,7 +57,6 @@ def lambda_handler(event, context):
     rowCount = 0
     for row in reader:
       rowCount += 1
-
       # Show the row in the debug log
       print(row['product_ID'], row['target_Price'])
 
@@ -67,18 +66,20 @@ def lambda_handler(event, context):
         ProductTable.put_item(
           Item={
             'ProductID': row['product_ID'],
-            'TargetPrice':  int(row['target_Price']),
-            'ProductLink':weblink})
+            'TargetPrice': int(row['target_Price']),
+            'ProductLink': weblink})
         
         mydata = return_NameandPrice(weblink)    
+        # decode the product image in the html and save it.
         imgdata = base64.b64decode(mydata['Image'].replace('data:image/jpeg;base64,',''))
         filename = '/tmp/productImage.jpg'  # I assume you have a way of picking unique filenames
         with open(filename, 'wb') as f:
           f.write(imgdata)
           f.close()
-        
+        # return the product image to S3
         response = s3.meta.client.upload_file(filename, bucket, 'img/'+ row['product_ID']+'.jpg')
         
+        # insert product info into the ProductPrice table.
         ProductPriceTable.put_item(
           Item={
             'ProductID': row['product_ID'],
